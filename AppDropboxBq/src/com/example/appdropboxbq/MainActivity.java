@@ -4,16 +4,29 @@ import android.os.Bundle;
 import android.app.Activity;
 import android.content.SharedPreferences;
 import android.view.Menu;
+import android.view.View;
+import android.view.View.OnClickListener;
 
 import java.io.File;
+import java.util.ArrayList;
 
 import android.content.SharedPreferences.Editor;
 import android.util.Log;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.ListView;
 import android.widget.Toast;
 
 import com.dropbox.client2.DropboxAPI;
+import com.dropbox.client2.DropboxAPI.Entry;
 import com.dropbox.client2.android.AndroidAuthSession;
 import com.dropbox.client2.android.AuthActivity;
+import com.dropbox.client2.exception.DropboxException;
+import com.dropbox.client2.exception.DropboxIOException;
+import com.dropbox.client2.exception.DropboxParseException;
+import com.dropbox.client2.exception.DropboxPartialFileException;
+import com.dropbox.client2.exception.DropboxServerException;
+import com.dropbox.client2.exception.DropboxUnlinkedException;
 import com.dropbox.client2.session.AccessTokenPair;
 import com.dropbox.client2.session.AppKeyPair;
 
@@ -22,8 +35,8 @@ public class MainActivity extends Activity {
 
 	private static final String TAG = "AppDropBox > MainActivity";
 	
-	final static private String APP_KEY = "ib668l9z4j4ps2a";
-    final static private String APP_SECRET = "w23by8h5dded9xn";
+	final static private String APP_KEY = "xl3dcwl0thmvud2";
+    final static private String APP_SECRET = "niakhqlaxcvzhem";
 
     final static private String ACCOUNT_PREFS_NAME = "prefs";
     final static private String ACCESS_KEY_NAME = "ACCESS_KEY";
@@ -33,7 +46,13 @@ public class MainActivity extends Activity {
 
     DropboxAPI<AndroidAuthSession> mApi;
 
-    private boolean mLoggedIn;
+    private boolean isLogged;
+    private String error_msg = "";
+    
+    ArrayList<Entry> bookList;
+    ArrayList<String> bookNameList;
+    private ListView lvBooks;
+    private Button boton_prueba;
   
     
     @Override
@@ -45,7 +64,8 @@ public class MainActivity extends Activity {
 
         setContentView(R.layout.activity_main);
         
-        if (mLoggedIn) {
+        /*
+        if (isLogged) {
             logOut();
         } else {
             // Start the remote authentication
@@ -55,10 +75,50 @@ public class MainActivity extends Activity {
                 mApi.getSession().startOAuth2Authentication(MainActivity.this);
             }
         }
+        */
+        if (isLogged) {
+            logOut();
+        }
+        // Start the remote authentication
+        if (USE_OAUTH1) {
+            mApi.getSession().startAuthentication(MainActivity.this);
+        } else {
+            mApi.getSession().startOAuth2Authentication(MainActivity.this);
+        }
+        
+        boton_prueba = (Button)findViewById(R.id.buttonPrueba);
+
+        boton_prueba.setOnClickListener(new OnClickListener() {
+            public void onClick(View v) {
+            	 bookList = new ArrayList<Entry>();
+            	 bookNameList = new ArrayList<String>();
+                 Boolean b_list_checked = searchBooksInMyDropbox("/bq/");
+                 if(b_list_checked){
+                 	 showToast(bookList.size() + " books");
+                 	 
+                 	 lvBooks = (ListView) findViewById(R.id.listView);
+                 	 
+                 	 
+                 	 
+                 	 ArrayAdapter<String> arrayAdapter = new ArrayAdapter<String>(MainActivity.this, 
+                 			 														android.R.layout.simple_list_item_1,
+                 			 														bookNameList);             			 
+                 	 lvBooks.setAdapter(arrayAdapter);
+                 	 
+                 }else{
+                	 showToast(error_msg);
+                 }
+            }
+        });       
+       
         
     }
 
-
+    private void showToast(String msg) {
+        Toast error = Toast.makeText(this, msg, Toast.LENGTH_LONG);
+        error.show();
+    }
+    
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         // Inflate the menu; this adds items to the action bar if it is present.
@@ -81,7 +141,7 @@ public class MainActivity extends Activity {
 
                 // Store it locally in our app for later use
                 storeAuth(session);
-                mLoggedIn = true;
+                isLogged = true;
             } catch (IllegalStateException e) {
             	Toast error = Toast.makeText(this, "Couldn't authenticate with Dropbox:" + e.getLocalizedMessage(), Toast.LENGTH_LONG);
                 error.show();
@@ -100,8 +160,88 @@ public class MainActivity extends Activity {
         return session;
     }
     
-    private void listBooks(){
+    private Boolean searchBooksInMyDropbox(String dbPath){
+    	
+    	
+    	try {
+	    	// Get the metadata for a directory
+	        Entry dirent = mApi.metadata(dbPath, 1000, null, true, null);
+	
+	        if (!dirent.isDir || dirent.contents == null) {
+	            // It's not a directory, or there's nothing in it
+	        	error_msg = "File or empty directory";
+	            return false;
+	        }
+	        
+            for (Entry ent: dirent.contents) {      
+            	if(ent.isDir){
+            		Log.d("DIRECTORY_CHANGE",ent.path);
+            		searchBooksInMyDropbox(ent.path);
+            	}else if(isAnEpubFile(ent)){
+                	bookList.add(ent);
+                	bookNameList.add(ent.fileName());
+            	}
+            }
+	        
+            if (bookList.size() == 0) {
+                // No books in that directory
+                error_msg = "No book files in that directory";
+                return false;
+            }
+            
+	        return true;
+	        
+	        
+	        
+    	} catch (DropboxUnlinkedException e) {
+            // The AuthSession wasn't properly authenticated or user unlinked.
+        } catch (DropboxPartialFileException e) {
+            // We canceled the operation
+        	error_msg = "Download canceled";
+        } catch (DropboxServerException e) {
+            // Server-side exception.  These are examples of what could happen,
+            // but we don't do anything special with them here.
+            if (e.error == DropboxServerException._304_NOT_MODIFIED) {
+                // won't happen since we don't pass in revision with metadata
+            } else if (e.error == DropboxServerException._401_UNAUTHORIZED) {
+                // Unauthorized, so we should unlink them.  You may want to
+                // automatically log the user out in this case.
+            } else if (e.error == DropboxServerException._403_FORBIDDEN) {
+                // Not allowed to access this
+            } else if (e.error == DropboxServerException._404_NOT_FOUND) {
+                // path not found
+            } else if (e.error == DropboxServerException._406_NOT_ACCEPTABLE) {
+                // too many entries to return
+            } else if (e.error == DropboxServerException._415_UNSUPPORTED_MEDIA) {
+            } else if (e.error == DropboxServerException._507_INSUFFICIENT_STORAGE) {
+                // user is over quota
+            } else {
+                // Something else
+            }
+            // This gets the Dropbox error, translated into the user's language
+            error_msg = e.body.userError;
+            if (error_msg == null) {
+            	error_msg = e.body.error;
+            }
+        } catch (DropboxIOException e) {
+            // Happens all the time, probably want to retry automatically.
+        	error_msg = "Network error.  Try again.";
+        } catch (DropboxParseException e) {
+            // Probably due to Dropbox server restarting, should retry
+        	error_msg = "Dropbox error.  Try again.";
+        } catch (DropboxException e) {
+            // Unknown error
+        	error_msg = "Unknown error.  Try again.";
+        }
+
+        return false;
+    }
     
+    private Boolean isAnEpubFile(Entry currentEnt){
+    	String nameFile = currentEnt.fileName();
+		Log.i("NAMEFILE",nameFile);
+		String[] pathFileSplit = nameFile.split("\\.");
+		return ("epub".equals(pathFileSplit[1]));
     }
     
     private void loadAuth(AndroidAuthSession session) {
@@ -150,7 +290,7 @@ public class MainActivity extends Activity {
         // Clear our stored keys
         clearKeys();
         // Change UI state to display logged out version
-        mLoggedIn = false;
+        isLogged = false;
     }
     
     private void clearKeys() {
