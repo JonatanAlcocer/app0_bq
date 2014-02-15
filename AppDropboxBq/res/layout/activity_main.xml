@@ -12,19 +12,28 @@
         android:id="@+id/listView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_above="@+id/close_app"
         android:layout_alignParentLeft="true"
-        android:layout_below="@+id/buttonPrueba"
-        android:layout_marginTop="20dp" >
+        android:layout_below="@+id/download_books" >
 
     </ListView>
 
     <Button
-        android:id="@+id/buttonPrueba"
+        android:id="@+id/close_app"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_alignParentLeft="true"
-        android:layout_alignParentRight="true"
+        android:layout_alignLeft="@+id/listView"
+        android:layout_alignParentBottom="true"
+        android:layout_alignRight="@+id/listView"
+        android:text="Cerrar Dropbox y Salir" />
+
+    <Button
+        android:id="@+id/download_books"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignLeft="@+id/listView"
         android:layout_alignParentTop="true"
-        android:text="ButtonPrueba" />
+        android:layout_alignRight="@+id/listView"
+        android:text="Mostrar todos los libros" />
 
 </RelativeLayout>

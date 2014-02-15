@@ -8,7 +8,6 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.View.OnClickListener;
 
-import java.io.File;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -28,7 +27,6 @@ import android.widget.Toast;
 import com.dropbox.client2.DropboxAPI;
 import com.dropbox.client2.DropboxAPI.Entry;
 import com.dropbox.client2.android.AndroidAuthSession;
-import com.dropbox.client2.android.AuthActivity;
 import com.dropbox.client2.exception.DropboxException;
 import com.dropbox.client2.exception.DropboxIOException;
 import com.dropbox.client2.exception.DropboxParseException;
@@ -62,7 +60,8 @@ public class MainActivity extends Activity {
     ArrayList<Book> bookList;
     ArrayList<String> bookNameSortedList;
     private ListView lvBooks;
-    private Button boton_prueba;
+    private Button downloadBooks_button;
+    private Button closeApp_button;
   
     
     @Override
@@ -96,32 +95,36 @@ public class MainActivity extends Activity {
             mApi.getSession().startOAuth2Authentication(MainActivity.this);
         }
         
-        boton_prueba = (Button)findViewById(R.id.buttonPrueba);
+        
+        downloadBooks_button = (Button)findViewById(R.id.download_books);
 
-        boton_prueba.setOnClickListener(new OnClickListener() {
+        downloadBooks_button.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
             	 bookList = new ArrayList<Book>();
             	 bookNameSortedList = new ArrayList<String>();
             	 
                  Boolean b_list_checked = searchBooksInMyDropbox("/bq/");
                  showToast(bookList.size() + " books");
-                 if(b_list_checked){
-                 	                  	 
+                 if(b_list_checked){                 	                  	 
                  	 sortBooksByName();
-                 	 
                  	 showListOfBooks();
-                 	 
                  }else{
                 	 showToast(error_msg);
                  }
             }
-        });       
+        });   
         
-    }
+        
+        
+        closeApp_button = (Button)findViewById(R.id.close_app);
 
-    private void showToast(String msg) {
-        Toast error = Toast.makeText(this, msg, Toast.LENGTH_LONG);
-        error.show();
+        closeApp_button.setOnClickListener(new OnClickListener() {
+            public void onClick(View v) {
+            	 logOut();
+            	 finish();
+            }
+        });   
+        
     }
     
     @Override
@@ -154,6 +157,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         AndroidAuthSession session = mApi.getSession();
+        
 
         // The next part must be inserted in the onResume() method of the
         // activity from which session.startAuthentication() was called, so
@@ -240,6 +244,7 @@ public class MainActivity extends Activity {
             		Log.d("DIRECTORY_CHANGE",ent.path);
             		searchBooksInMyDropbox(ent.path);
             	}else if(isAnEpubFile(ent)){
+            		
             		Book currentBook = new Book(ent.fileName(), getDate(ent.clientMtime));
             		Log.i("BOOK ->",ent.fileName() + "; " + getDate(ent.clientMtime).getTime() + "; " + ent.clientMtime);
                 	bookList.add(currentBook);
@@ -369,4 +374,11 @@ public class MainActivity extends Activity {
     			 														bookNameSortedList);             			 
     	 lvBooks.setAdapter(arrayAdapter);
     }
+    
+
+    private void showToast(String msg) {
+        Toast error = Toast.makeText(this, msg, Toast.LENGTH_LONG);
+        error.show();
+    }
+    
 }
