@@ -4,11 +4,19 @@ import android.os.Bundle;
 import android.app.Activity;
 import android.content.SharedPreferences;
 import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.View.OnClickListener;
 
 import java.io.File;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.Locale;
 
 import android.content.SharedPreferences.Editor;
 import android.util.Log;
@@ -30,6 +38,8 @@ import com.dropbox.client2.exception.DropboxUnlinkedException;
 import com.dropbox.client2.session.AccessTokenPair;
 import com.dropbox.client2.session.AppKeyPair;
 
+import com.example.appdropboxbq.Book;
+
 
 public class MainActivity extends Activity {
 
@@ -49,8 +59,8 @@ public class MainActivity extends Activity {
     private boolean isLogged;
     private String error_msg = "";
     
-    ArrayList<Entry> bookList;
-    ArrayList<String> bookNameList;
+    ArrayList<Book> bookList;
+    ArrayList<String> bookNameSortedList;
     private ListView lvBooks;
     private Button boton_prueba;
   
@@ -90,27 +100,22 @@ public class MainActivity extends Activity {
 
         boton_prueba.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
-            	 bookList = new ArrayList<Entry>();
-            	 bookNameList = new ArrayList<String>();
+            	 bookList = new ArrayList<Book>();
+            	 bookNameSortedList = new ArrayList<String>();
+            	 
                  Boolean b_list_checked = searchBooksInMyDropbox("/bq/");
+                 showToast(bookList.size() + " books");
                  if(b_list_checked){
-                 	 showToast(bookList.size() + " books");
+                 	                  	 
+                 	 sortBooksByName();
                  	 
-                 	 lvBooks = (ListView) findViewById(R.id.listView);
-                 	 
-                 	 
-                 	 
-                 	 ArrayAdapter<String> arrayAdapter = new ArrayAdapter<String>(MainActivity.this, 
-                 			 														android.R.layout.simple_list_item_1,
-                 			 														bookNameList);             			 
-                 	 lvBooks.setAdapter(arrayAdapter);
+                 	 showListOfBooks();
                  	 
                  }else{
                 	 showToast(error_msg);
                  }
             }
         });       
-       
         
     }
 
@@ -122,8 +127,27 @@ public class MainActivity extends Activity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.main, menu);
+        getMenuInflater().inflate(R.menu.sortbooks_menu, menu);
         return true;
+    }
+    
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        // Handle item selection
+        switch (item.getItemId()) {
+            case R.id.ordenar_nombre:
+                showToast("Libros ordenados por Nombre");
+                sortBooksByName();
+                showListOfBooks();
+                return true;
+            case R.id.ordenar_fecha:
+            	showToast("Libros ordenados por Fecha");
+            	sortBooksByDate();
+            	showListOfBooks();
+                return true;
+            default:
+                return super.onOptionsItemSelected(item);
+        }
     }
     
     @Override
@@ -160,8 +184,46 @@ public class MainActivity extends Activity {
         return session;
     }
     
+    private void loadAuth(AndroidAuthSession session) {
+        SharedPreferences prefs = getSharedPreferences(ACCOUNT_PREFS_NAME, 0);
+        String key = prefs.getString(ACCESS_KEY_NAME, null);
+        String secret = prefs.getString(ACCESS_SECRET_NAME, null);
+        if (key == null || secret == null || key.length() == 0 || secret.length() == 0) return;
+
+        if (key.equals("oauth2:")) {
+            // If the key is set to "oauth2:", then we can assume the token is for OAuth 2.
+            session.setOAuth2AccessToken(secret);
+        } else {
+            // Still support using old OAuth 1 tokens.
+            session.setAccessTokenPair(new AccessTokenPair(key, secret));
+        }
+    }
+    
+    private void storeAuth(AndroidAuthSession session) {
+        // Store the OAuth 2 access token, if there is one.
+        String oauth2AccessToken = session.getOAuth2AccessToken();
+        if (oauth2AccessToken != null) {
+            SharedPreferences prefs = getSharedPreferences(ACCOUNT_PREFS_NAME, 0);
+            Editor edit = prefs.edit();
+            edit.putString(ACCESS_KEY_NAME, "oauth2:");
+            edit.putString(ACCESS_SECRET_NAME, oauth2AccessToken);
+            edit.commit();
+            return;
+        }
+        // Store the OAuth 1 access token, if there is one.  This is only necessary if
+        // you're still using OAuth 1.
+        AccessTokenPair oauth1AccessToken = session.getAccessTokenPair();
+        if (oauth1AccessToken != null) {
+            SharedPreferences prefs = getSharedPreferences(ACCOUNT_PREFS_NAME, 0);
+            Editor edit = prefs.edit();
+            edit.putString(ACCESS_KEY_NAME, oauth1AccessToken.key);
+            edit.putString(ACCESS_SECRET_NAME, oauth1AccessToken.secret);
+            edit.commit();
+            return;
+        }
+    }
+    
     private Boolean searchBooksInMyDropbox(String dbPath){
-    	
     	
     	try {
 	    	// Get the metadata for a directory
@@ -178,8 +240,9 @@ public class MainActivity extends Activity {
             		Log.d("DIRECTORY_CHANGE",ent.path);
             		searchBooksInMyDropbox(ent.path);
             	}else if(isAnEpubFile(ent)){
-                	bookList.add(ent);
-                	bookNameList.add(ent.fileName());
+            		Book currentBook = new Book(ent.fileName(), getDate(ent.clientMtime));
+            		Log.i("BOOK ->",ent.fileName() + "; " + getDate(ent.clientMtime).getTime() + "; " + ent.clientMtime);
+                	bookList.add(currentBook);
             	}
             }
 	        
@@ -189,9 +252,7 @@ public class MainActivity extends Activity {
                 return false;
             }
             
-	        return true;
-	        
-	        
+	        return true;	        
 	        
     	} catch (DropboxUnlinkedException e) {
             // The AuthSession wasn't properly authenticated or user unlinked.
@@ -238,49 +299,8 @@ public class MainActivity extends Activity {
     }
     
     private Boolean isAnEpubFile(Entry currentEnt){
-    	String nameFile = currentEnt.fileName();
-		Log.i("NAMEFILE",nameFile);
-		String[] pathFileSplit = nameFile.split("\\.");
+		String[] pathFileSplit = currentEnt.fileName().split("\\.");
 		return ("epub".equals(pathFileSplit[1]));
-    }
-    
-    private void loadAuth(AndroidAuthSession session) {
-        SharedPreferences prefs = getSharedPreferences(ACCOUNT_PREFS_NAME, 0);
-        String key = prefs.getString(ACCESS_KEY_NAME, null);
-        String secret = prefs.getString(ACCESS_SECRET_NAME, null);
-        if (key == null || secret == null || key.length() == 0 || secret.length() == 0) return;
-
-        if (key.equals("oauth2:")) {
-            // If the key is set to "oauth2:", then we can assume the token is for OAuth 2.
-            session.setOAuth2AccessToken(secret);
-        } else {
-            // Still support using old OAuth 1 tokens.
-            session.setAccessTokenPair(new AccessTokenPair(key, secret));
-        }
-    }
-    
-    private void storeAuth(AndroidAuthSession session) {
-        // Store the OAuth 2 access token, if there is one.
-        String oauth2AccessToken = session.getOAuth2AccessToken();
-        if (oauth2AccessToken != null) {
-            SharedPreferences prefs = getSharedPreferences(ACCOUNT_PREFS_NAME, 0);
-            Editor edit = prefs.edit();
-            edit.putString(ACCESS_KEY_NAME, "oauth2:");
-            edit.putString(ACCESS_SECRET_NAME, oauth2AccessToken);
-            edit.commit();
-            return;
-        }
-        // Store the OAuth 1 access token, if there is one.  This is only necessary if
-        // you're still using OAuth 1.
-        AccessTokenPair oauth1AccessToken = session.getAccessTokenPair();
-        if (oauth1AccessToken != null) {
-            SharedPreferences prefs = getSharedPreferences(ACCOUNT_PREFS_NAME, 0);
-            Editor edit = prefs.edit();
-            edit.putString(ACCESS_KEY_NAME, oauth1AccessToken.key);
-            edit.putString(ACCESS_SECRET_NAME, oauth1AccessToken.secret);
-            edit.commit();
-            return;
-        }
     }
     
     private void logOut() {
@@ -298,5 +318,55 @@ public class MainActivity extends Activity {
         Editor edit = prefs.edit();
         edit.clear();
         edit.commit();
+    }
+    
+    private Date getDate(String stringDate){
+    	SimpleDateFormat df = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss Z", Locale.US);
+    	Date date = null;
+		try {
+			date = df.parse(stringDate);
+		} catch (ParseException e) {
+			Log.e("Error in date",e.getMessage());
+		}
+		return date;
+    }
+    
+    private void sortBooksByName(){
+    	Collections.sort(bookList, new Comparator<Book>() {
+    		  public int compare(Book o1, Book o2) {
+    		      return o1.getName().compareTo(o2.getName());
+    		  }
+    	});
+    	buildBookNameList();
+    }
+    
+    private void sortBooksByDate(){
+    	Collections.sort(bookList, new Comparator<Book>() {
+    		  public int compare(Book o1, Book o2) {
+    		      if (o1.getModified() == null || o2.getModified() == null)
+    		        return 0;
+    		      return o1.getModified().compareTo(o2.getModified());
+    		  }
+    	});
+    	buildBookNameList();
+    }
+    
+    private void buildBookNameList(){
+    	bookNameSortedList.clear();
+    	
+    	Iterator<Book> it = bookList.iterator();
+    	while(it.hasNext()){
+    		Book currentBook = it.next();
+    		bookNameSortedList.add(currentBook.getName());
+    	}
+    }
+    
+    private void showListOfBooks(){
+    	lvBooks = (ListView) findViewById(R.id.listView);
+
+    	 ArrayAdapter<String> arrayAdapter = new ArrayAdapter<String>(MainActivity.this, 
+    			 														android.R.layout.simple_list_item_1,
+    			 														bookNameSortedList);             			 
+    	 lvBooks.setAdapter(arrayAdapter);
     }
 }
