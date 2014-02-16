@@ -103,7 +103,7 @@ public class MainActivity extends Activity {
             	 bookList = new ArrayList<Book>();
             	 bookNameSortedList = new ArrayList<String>();
             	 
-                 Boolean b_list_checked = searchBooksInMyDropbox("/bq/");
+                 Boolean b_list_checked = searchBooksInMyDropbox("/");
                  showToast(bookList.size() + " books");
                  if(b_list_checked){                 	                  	 
                  	 sortBooksByName();
@@ -367,7 +367,7 @@ public class MainActivity extends Activity {
     }
     
     private void showListOfBooks(){
-    	lvBooks = (ListView) findViewById(R.id.listView);
+    	 lvBooks = (ListView) findViewById(R.id.listView);
 
     	 ArrayAdapter<String> arrayAdapter = new ArrayAdapter<String>(MainActivity.this, 
     			 														android.R.layout.simple_list_item_1,
